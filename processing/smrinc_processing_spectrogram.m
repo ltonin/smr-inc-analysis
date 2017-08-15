@@ -3,7 +3,7 @@ clearvars; clc;
 sublist     = {'ah7', 'o8', 'ai2', 'b4', 'e8', 'g6', 'x3'};
 nsubjects   = length(sublist);
 
-pattern     = 'mi_bhbf';
+pattern     = 'mi';
 extension   = '.gdf';
 datapath    = '/mnt/data/Research/smr-inc/';
 targetdir   = 'analysis/';
