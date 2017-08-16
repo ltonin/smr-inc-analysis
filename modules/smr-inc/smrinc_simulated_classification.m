@@ -77,6 +77,6 @@ for rId = 1:NumRuns
 end
 
 %% Saving data
-targetname = [targetdir subject '_probabilities_raw.mat'];
+targetname = [targetdir subject '_simulated_raw.mat'];
 util_bdisp(['[out] - Saving raw probabilities in ' targetname]);
 save(targetname, 'pp', 'integrator', 'classifier', 'events', 'labels');

@@ -1,17 +1,18 @@
-clearvars; clc; 
-
-subject     = 'b4';
+% clearvars; clc; 
+% 
+% subject     = 'b4';
 targetdir   = 'analysis/';
 
 % Load posterior probabilities
-cfilepath = [targetdir subject '_probabilities_raw.mat'];
-disp(['[io] - Loading posterior probabilities for subject ' subject ': ' cfilepath]);
+cfilepath = [targetdir subject '_simulated_raw.mat'];
+util_bdisp(['[io] - Loading posterior probabilities for subject ' subject ': ' cfilepath]);
 data = load(cfilepath);
 
 % Getting posterior probabilities
 pp = data.pp(:, 1);
 
 % Getting events
+labels = data.labels;
 events = data.events;
 
 % Getting labels
@@ -24,6 +25,9 @@ NumDays        = length(Days);
 Ik             = data.labels.Ik;
 Integrators    = unique(Ik);
 NumIntegrators = length(Integrators);
+Mk             = data.labels.Mk;
+Modalities     = unique(Mk);
+NumModalities  = length(Modalities);
 
 % Getting integrator parameters
 integrator = data.integrator;
@@ -31,12 +35,36 @@ integrator = data.integrator;
 NumSamples = size(pp, 1);
 
 % Extracting continuous feedback events
-[~, CfbEvents] = proc_get_event2(781, NumSamples, events.POS, events.TYP, events.DUR);
+[Cfbk, CfbEvents] = proc_get_event2(781, NumSamples, events.POS, events.TYP, events.DUR);
 [~, CueEvents] = proc_get_event2([769 770 771 773 783], NumSamples, events.POS, events.TYP, events.DUR);
+[~, ResEvents] = proc_get_event2([897 898], NumSamples, events.POS, events.TYP, events.DUR);
 CueTrials = CueEvents.TYP;
 NumTrials = length(CueTrials);
 
+Ck = Cfbk;
+Xk = Cfbk;
+Tk = Cfbk;
+for trId = 1:NumTrials
+    cstart = CfbEvents.POS(trId);
+    cstop  = cstart + CfbEvents.DUR(trId) - 1;
+    ccue   = CueTrials(trId);
+    cres   = ResEvents.TYP(trId);
+    crun   = Rk(cstart);
+    if(ccue ~= 783)
+        cintegrator = integrator{crun};
+        ctargets = [unique(cintegrator.thresholds) 1-unique(cintegrator.thresholds)];
+        ctar = ctargets(cintegrator.classes == ccue);
+    else
+        ctar = 0;
+    end
+    
+    Ck(cstart:cstop) = ccue;
+    Xk(cstart:cstop) = cres;
+    Tk(cstart:cstop) = ctar;
+end
+
 %% Apply integration for each run
+disp('[proc] - Applying integration foreach run');
 ema_pp = 0.5*ones(NumSamples, 1);
 dyn_pp = 0.5*ones(NumSamples, 1);
 for rId = 1:NumRuns
@@ -79,58 +107,20 @@ for rId = 1:NumRuns
     end
 end
 
-%% Comparing simulation with online events
-ierror = nan(NumTrials, 1);
-tRk = zeros(NumTrials, 1);
-tIk = zeros(NumTrials, 1);
-for trId = 1:NumTrials
-    cstop = CfbEvents.POS(trId) + CfbEvents.DUR(trId)-1;
-    crun = Rk(cstop);
-    ccue = CueTrials(trId);
-    
-    cintegrator = integrator{crun};
-    ctargets  = [unique(cintegrator.thresholds) 1-unique(cintegrator.thresholds)];
-            
-    
-    if(cintegrator.type == 1)    % ema
-        cipp = ema_pp(cstop);
-    elseif(cintegrator.type == 2)   % dynamic
-        cipp = dyn_pp(cstop);
-    end
-    
-    ierror(trId) = min(abs(cipp-ctargets));
-    tRk(trId) = crun;
-    tIk(trId) = cintegrator.type;
+%% Saving data
+targetname = [targetdir subject '_simulated_integrated.mat'];
+util_bdisp(['[out] - Saving integrated probabilities in ' targetname]);
+save(targetname, 'pp', 'ema_pp', 'dyn_pp', 'Tk', 'Ck', 'Ik', 'Xk', 'Mk', 'Rk', 'Dk', 'events', 'labels');
+
+%% Exporting text file
+textfilename = [targetdir subject '_simulated_probabilities.txt'];
+util_bdisp(['[out] - Exporting integrated probabilities to ' targetname]);
+fid = fopen(textfilename, 'w+t');
+ToBeStored = [(1:NumSamples)', pp, ema_pp, dyn_pp, Tk, Ck, Ik, Xk, Mk, Rk, Dk];
+if(fid ~= -1)
+    fprintf(fid, '%8s\t%7s\t%7s\t%7s\t%7s\t%5s\t%5s\t%5s\t%5s\t%5s\t%5s\n', 'sample', 'pp', 'ema', 'dyn', 'Tk', 'Ck', 'Ik', 'Xk', 'Mk', 'Rk', 'Dk');
+    fprintf(fid, '%8d\t%7.4f\t%7.4f\t%7.4f\t%7.4f\t%5d\t%5d\t%5d\t%5d\t%5d\t%5d\n', ToBeStored');
+else
+    error('chk:fid', ['Cannot create the file: ' textfilename]);
 end
-
-
-
-% [~, CfbEvents] = proc_get_event2(781, NumSamples, events.POS, events.TYP, events.DUR);
-% [~, CueEvents] = proc_get_event2([771 773 783], NumSamples, events.POS, events.TYP, events.DUR);
-% [~, ResEvents] = proc_get_event2([897 898], NumSamples, events.POS, events.TYP, events.DUR);
-% NumTrials = length(CfbEvents.TYP);
-% 
-% 
-% %% Computing integrated classification probabilities
-% util_bdisp(['[proc] - Computing integrated probabilities for ' num2str(NumRuns) ' runs']);
-% ema = 0.5*ones(NumSamples, 1);
-% dyn = 0.5*ones(NumSamples, 1);
-% for trId = 1:NumTrials
-%     cstart = CfbEvents.POS(trId);
-%     cstop  = cstart + CfbEvents.DUR(trId);
-%     
-%     pprob = 0.5;
-%     if(Ik(cstart) == 2)
-%         coeff = smrinc_integrator_forceprofile(inc(Rk(cstart)), nrpt(Rk(cstart)), bias(Rk(cstart)), degree(Rk(cstart))); 
-%     end
-%         
-%     for sId = cstart+1:cstop
-%         if(Ik(cstart) == 1)
-%             ema(sId) = smrinc_integrator_ema(rawprobs(sId, 1), pprob, alpha(Rk(cstart)), rejection(Rk(cstart)));
-%             pprob = ema(sId);
-%         elseif(Ik(cstart) == 2)
-%             dyn(sId) = smrinc_integrator_dynamic(rawprobs(sId, 1), pprob, coeff, phi(Rk(cstart)), chi(Rk(cstart)), 0.0625);
-%             pprob = dyn(sId);
-%         end
-%     end
-% end
+fclose(fid);
